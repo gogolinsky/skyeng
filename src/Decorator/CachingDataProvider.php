@@ -43,7 +43,10 @@ class CachingDataProvider implements IDataProvider
 
             $result = $this->dataProvider->get($request);
             $cacheItem->set($result)->expiresAt((new DateTime())->modify('+1 day'));
-            $this->cache->save($cacheItem);
+
+            if (!$this->cache->save($cacheItem)) {
+                $this->logger->warning('Warning');
+            }
 
             return $result;
         } catch (Exception $e) {
