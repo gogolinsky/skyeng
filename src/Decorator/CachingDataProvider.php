@@ -6,55 +6,49 @@ use DateTime;
 use Exception;
 use Psr\Cache\CacheItemPoolInterface;
 use Psr\Log\LoggerInterface;
-use src\Integration\DataProvider;
+use src\Integration\IDataProvider;
 
-class DecoratorManager extends DataProvider
+class CachingDataProvider implements IDataProvider
 {
     public $cache;
     /** @var LoggerInterface */
     public $logger;
+    /** @var IDataProvider */
+    private $dataProvider;
 
     /**
-     * @param string $host
-     * @param string $user
-     * @param string $password
+     * @param IDataProvider $dataProvider
      * @param CacheItemPoolInterface $cache
+     * @param LoggerInterface $logger
      */
-    public function __construct($host, $user, $password, CacheItemPoolInterface $cache)
+    public function __construct(IDataProvider $dataProvider, CacheItemPoolInterface $cache, LoggerInterface $logger)
     {
-        parent::__construct($host, $user, $password);
+        $this->dataProvider = $dataProvider;
         $this->cache = $cache;
-    }
-
-    public function setLogger(LoggerInterface $logger)
-    {
         $this->logger = $logger;
     }
 
     /**
      * {@inheritdoc}
      */
-    public function getResponse(array $input)
+    public function get(array $request)
     {
         try {
-            $cacheKey = $this->getCacheKey($input);
+            $cacheKey = $this->getCacheKey($request);
             $cacheItem = $this->cache->getItem($cacheKey);
 
             if ($cacheItem->isHit()) {
                 return $cacheItem->get();
             }
 
-            $result = parent::get($input);
-
-            $cacheItem
-                ->set($result)
-                ->expiresAt(
-                    (new DateTime())->modify('+1 day')
-                );
+            $result = $this->dataProvider->get($request);
+            $cacheItem->set($result)->expiresAt((new DateTime())->modify('+1 day'));
+            $this->cache->save($cacheItem);
 
             return $result;
         } catch (Exception $e) {
             $this->logger->critical('Error');
+            throw $e;
         }
 
         return [];
@@ -62,6 +56,6 @@ class DecoratorManager extends DataProvider
 
     public function getCacheKey(array $input)
     {
-        return json_encode($input);
+        return md5(json_encode($input));
     }
 }
